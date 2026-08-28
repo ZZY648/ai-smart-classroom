@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
+  <title>AI智慧办课综合系统 - 视觉基准</title>
+  <link rel="stylesheet" href="styles.css">
+  <script>try { if (localStorage.getItem("navCollapsed") === "1") document.documentElement.classList.add("nav-collapsed"); } catch (error) { /* Storage may be unavailable. */ }</script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="brand-mark" aria-label="系统标识"><span></span><span></span><span></span></div>
+        <button id="sidebar-toggle" class="sidebar-toggle" type="button" title="收起导航栏" aria-label="收起导航栏"><i data-lucide="chevrons-left"></i></button>
+      </div>
+      <nav class="nav-list" aria-label="主导航">
+        <button class="nav-item" data-nav="课程总览" title="课程总览"><i data-lucide="layout-dashboard"></i><span>课程总览</span></button>
+        <button class="nav-item" data-nav="课堂实施" title="课堂实施"><i data-lucide="presentation"></i><span>课堂实施</span></button>
+        <button class="nav-item" data-nav="学情分析" title="学情分析"><i data-lucide="chart-no-axes-combined"></i><span>学情分析</span></button>
+        <button class="nav-item" data-nav="教学评价" title="教学评价"><i data-lucide="badge-check"></i><span>教学评价</span></button>
+        <button class="nav-item" data-nav="成果报告" title="成果报告"><i data-lucide="file-chart-column"></i><span>成果报告</span></button>
+        <button class="nav-item" data-nav="系统平台" title="系统平台"><i data-lucide="server"></i><span>系统平台</span></button>
+      </nav>
+      <section class="sidebar-insight" aria-label="课堂连接">
+        <div class="sidebar-insight-head"><span>课堂连接</span><i data-lucide="activity"></i></div>
+        <div class="sidebar-insight-score"><strong>在线</strong><span>数据服务</span></div>
+        <div class="sidebar-spark" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <small>六类数据源已连接</small>
+      </section>
+      <div class="sidebar-foot">
+        <button class="icon-button" title="系统设置" aria-label="系统设置"><i data-lucide="settings"></i></button>
+        <div><strong>智慧办课</strong><span>课堂服务正常</span></div>
+      </div>
+    </aside>
+
+    <section class="app-area">
+      <header class="topbar">
+        <div class="product-title">AI智慧办课综合系统</div>
+        <div class="crumb"><span>金融服务与管理</span><i data-lucide="chevron-right"></i><strong>汽车金融实务</strong></div>
+        <div class="class-state"><span class="pulse-dot"></span><strong>课堂进行中</strong><span>14:32</span></div>
+        <div class="top-actions">
+          <div class="system-state"><i data-lucide="wifi"></i><span>系统正常</span></div>
+        </div>
+      </header>
+
+      <main class="main-stage">
+        <section class="page-heading">
+          <div>
+            <div class="eyebrow"><span id="view-tag">课程驾驶舱</span><span class="status-chip">教学数据已就绪</span></div>
+            <h1 id="page-title"></h1>
+            <p id="page-subtitle"></p>
+          </div>
+        <div class="heading-actions">
+          <button id="date-filter" class="secondary-button"><i data-lucide="calendar-days"></i><span>2026年7月18日</span><i data-lucide="chevron-down"></i></button>
+          <div class="voice-control">
+            <button id="voice-open" class="primary-button" type="button"><i data-lucide="mic"></i><span>开启语音</span></button>
+            <div id="voice-status" class="voice-status" aria-live="polite"><span class="voice-status-dot"></span><div class="voice-level" aria-hidden="true"><span></span><span></span><span></span><span></span></div><div><strong id="voice-label">语音待命</strong><small id="voice-detail">语音服务已就绪</small></div></div>
+          </div>
+        </div>
+      </section>
+
+        <section id="metrics" class="metrics-grid"></section>
+
+        <section class="content-layout">
+          <div id="main-content" class="main-content"></div>
+          <aside class="insight-rail">
+            <section class="insight-panel">
+              <div class="panel-heading">
+                <div><span class="panel-kicker">AI TEACHING INSIGHT</span><h2 id="insight-title"></h2></div>
+                <i data-lucide="sparkles"></i>
+              </div>
+              <div id="insights" class="insight-list"></div>
+              <button class="text-action">查看分析依据<i data-lucide="arrow-right"></i></button>
+            </section>
+
+            <section class="digital-human-space" aria-label="数字人预留区域">
+              <div class="assistant-caption"><span>AI CLASSROOM ASSISTANT</span><strong>小薇 · 课堂助手</strong></div>
+              <div id="assistant-stage" class="assistant-stage" aria-live="polite">
+                <div id="assistant-bubble" class="assistant-bubble" hidden></div>
+                <img id="xiaowei" class="xiaowei" src="assets/xiaowei.png" alt="数字人小薇">
+              </div>
+              <div class="space-guides"><span></span><span></span><span></span></div>
+            </section>
+          </aside>
+        </section>
+      </main>
+    </section>
+  </div>
+
+  <div id="toast-region" class="toast-region" role="status" aria-live="polite"></div>
+
+  <dialog id="detail-dialog" class="detail-dialog">
+    <div class="dialog-heading"><div><span>DETAIL</span><h2 id="detail-title">分析依据</h2></div><button class="dialog-close" type="button" aria-label="关闭"><i data-lucide="x"></i></button></div>
+    <div id="detail-content"></div>
+  </dialog>
+
+  <script src="assets/lucide.min.js"></script>
+  <script src="app.js"></script>
+  <script src="app-live.js"></script>
+</body>
+</html>
