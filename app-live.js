@@ -732,16 +732,20 @@ function stopMicrophoneMonitor() {
   updateVoiceLevel(0);
 }
 
+function withTimeout(promise, timeoutMs) {
+  let timer;
+  const timeout = new Promise((resolve) => { timer = window.setTimeout(() => resolve("timeout"), timeoutMs); });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
+}
+
 async function waitForLocalRecognition(Recognition, options) {
-  const deadline = Date.now() + 30000;
+  const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
-    try {
-      const availability = await Recognition.available(options);
+    const availability = await withTimeout(Recognition.available(options), 2000);
+    if (availability !== "timeout") {
       appState.localRecognitionAvailability = availability;
       if (availability === "available") return true;
       if (availability === "unavailable") return false;
-    } catch (error) {
-      return false;
     }
     await new Promise((resolve) => window.setTimeout(resolve, 500));
   }
@@ -764,13 +768,18 @@ async function prepareLocalRecognition(Recognition) {
     }
   }
   try {
-    let availability = await Recognition.available(options);
+    let availability = await withTimeout(Recognition.available(options), 3000);
+    if (availability === "timeout") return false;
     appState.localRecognitionAvailability = availability;
     if (availability === "available") return true;
     if ((availability === "downloadable" || availability === "downloading") && typeof Recognition.install === "function") {
       setListeningState(false, "正在准备语音识别");
       setVoiceDetail(availability === "downloading" ? "本地语音组件正在准备" : "正在准备本地语音组件");
-      await (eagerInstall || Promise.resolve(false));
+      const installResult = await withTimeout(eagerInstall || Promise.resolve(false), 8000);
+      if (installResult === "timeout") {
+        setVoiceDetail("本地语音组件下载缓慢，已切换在线识别");
+        return false;
+      }
       if (eagerInstallRejected) return false;
       return await waitForLocalRecognition(Recognition, options);
     }
@@ -858,7 +867,7 @@ function createRecognition() {
       setVoiceDetail(Date.now() - appState.lastSoundAt < 2500 ? "麦克风正常，识别服务正在重连" : "正在重新连接语音服务");
       if (appState.recognitionNetworkErrors >= 3 && !appState.networkNoticeShown) {
         appState.networkNoticeShown = true;
-        showToast("语音服务正在重连，请保持页面开启后再说一次。", "refresh-cw");
+        showToast("在线语音服务连接失败：请检查网络后重试；若持续失败，请改用已下载本地语音组件的 Chrome 浏览器。", "refresh-cw");
       }
       return;
     }
@@ -896,8 +905,6 @@ async function startListening() {
   clearVoiceToasts();
   setListeningState(false, "正在连接麦克风");
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!appState.recognition && Recognition) appState.localRecognition = await prepareLocalRecognition(Recognition);
-  if (!appState.voiceEnabled) return;
   const microphoneReady = await startMicrophoneMonitor();
   if (!appState.voiceEnabled) {
     if (microphoneReady) stopMicrophoneMonitor();
@@ -908,8 +915,13 @@ async function startListening() {
     setListeningState(false, "语音待命");
     return;
   }
+  if (!appState.recognition && Recognition) {
+    const prepared = await withTimeout(prepareLocalRecognition(Recognition), 12000);
+    appState.localRecognition = prepared === true;
+    if (!appState.voiceEnabled) return;
+    if (prepared !== true) setVoiceDetail("本地语音组件不可用，正在连接在线语音识别");
+  }
   if (!appState.recognition) {
-    if (Recognition && !appState.localRecognition) setVoiceDetail("正在连接在线语音识别");
     appState.recognition = createRecognition();
   }
   if (!appState.recognition) {
