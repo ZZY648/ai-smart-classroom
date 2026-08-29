@@ -1,0 +1,15 @@
+# Netlify 部署配置:纯静态站点,无需构建
+[build]
+  publish = "."
+
+# 静态资源长缓存(文件名不变,更新站点时请配合 Netlify 的 cache 清理)
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+  Cache-Control = "public, max-age=86400"
+
+# UTF-8 与安全默认
+[[headers]]
+  for = "/*"
+  [headers.values]
+  X-Content-Type-Options = "nosniff"
