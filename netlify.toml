@@ -13,3 +13,9 @@
   for = "/*"
   [headers.values]
   X-Content-Type-Options = "nosniff"
+
+# 离线语音模型分片(约44MB,分片均小于 Netlify 单文件 25MB 限制)
+[[headers]]
+  for = "/assets/models/*"
+  [headers.values]
+  Cache-Control = "public, max-age=604800"

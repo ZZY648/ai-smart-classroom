@@ -122,7 +122,14 @@ const appState = {
   localRecognitionError: "",
   lastRecognitionError: "",
   awaitingQuestion: true,
-  activeScenario: ""
+  activeScenario: "",
+  wasmModel: null,
+  wasmModelLoading: null,
+  wasmRecognizer: null,
+  wasmAudioContext: null,
+  wasmProcessorNode: null,
+  wasmSourceNode: null,
+  asrMode: ""
 };
 
 function renderPlatform() {
@@ -738,6 +745,101 @@ function withTimeout(promise, timeoutMs) {
   return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
 }
 
+const LOCAL_MODEL_PARTS = ["assets/models/vosk-cn.part1", "assets/models/vosk-cn.part2", "assets/models/vosk-cn.part3"];
+
+async function fetchModelPart(url, completedParts, totalParts) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`模型分片缺失：${url}`);
+  const totalLength = Number(response.headers.get("content-length")) || 0;
+  const reader = response.body.getReader();
+  const chunks = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    if (totalLength) {
+      const percent = Math.floor(((completedParts + Math.min(1, received / totalLength)) / totalParts) * 100);
+      setVoiceDetail(`正在加载本地语音模型 ${percent}%（首次加载约需数十秒，之后直接秒开）`);
+    }
+  }
+  return new Blob(chunks);
+}
+
+async function loadLocalModel() {
+  if (appState.wasmModel && appState.wasmModel.ready) return appState.wasmModel;
+  if (!appState.wasmModelLoading) {
+    appState.wasmModelLoading = (async () => {
+      if (typeof window.Vosk === "undefined") throw new Error("本地语音引擎未加载");
+      setListeningState(false, "正在加载语音模型");
+      const parts = [];
+      for (let index = 0; index < LOCAL_MODEL_PARTS.length; index += 1) {
+        parts.push(await fetchModelPart(LOCAL_MODEL_PARTS[index], index, LOCAL_MODEL_PARTS.length));
+      }
+      const blobUrl = URL.createObjectURL(new Blob(parts));
+      setVoiceDetail("正在初始化本地语音模型");
+      const model = await window.Vosk.createModel(blobUrl);
+      URL.revokeObjectURL(blobUrl);
+      appState.wasmModel = model;
+      return model;
+    })();
+    appState.wasmModelLoading.catch(() => { appState.wasmModelLoading = null; });
+  }
+  return appState.wasmModelLoading;
+}
+
+async function startWasmListening(model) {
+  if (!appState.wasmAudioContext) {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    appState.wasmAudioContext = new AudioContextCtor();
+  }
+  const audioContext = appState.wasmAudioContext;
+  if (audioContext.state === "suspended") {
+    try { await audioContext.resume(); } catch (error) { /* 恢复失败时仍尝试处理 */ }
+  }
+  const recognizer = new model.KaldiRecognizer(audioContext.sampleRate);
+  recognizer.on("partialresult", (message) => {
+    const partial = message && message.result && message.result.partial;
+    if (!partial || appState.recognitionPausedForSpeech) return;
+    const detail = document.getElementById("voice-detail");
+    if (detail) detail.textContent = `听到：${partial}`;
+  });
+  recognizer.on("result", (message) => {
+    const text = ((message && message.result && message.result.text) || "").replace(/\s+/g, "");
+    if (!text) return;
+    const detail = document.getElementById("voice-detail");
+    if (detail) detail.textContent = `已听到：${text}`;
+    if (appState.recognitionPausedForSpeech || Date.now() < appState.suppressRecognitionUntil || document.getElementById("assistant-stage").classList.contains("speaking")) return;
+    clearVoiceToasts();
+    processCommand(text);
+  });
+  const processorNode = audioContext.createScriptProcessor(4096, 1, 1);
+  processorNode.onaudioprocess = (event) => {
+    try { recognizer.acceptWaveform(event.inputBuffer); } catch (error) { /* 忽略个别音频块异常 */ }
+  };
+  const sourceNode = audioContext.createMediaStreamSource(appState.microphoneStream);
+  sourceNode.connect(processorNode);
+  appState.wasmRecognizer = recognizer;
+  appState.wasmProcessorNode = processorNode;
+  appState.wasmSourceNode = sourceNode;
+  appState.asrMode = "wasm";
+  setListeningState(true, "正在聆听");
+  setVoiceDetail("本地语音识别已开启，请开始说话");
+}
+
+function stopWasmListening() {
+  try { if (appState.wasmSourceNode) appState.wasmSourceNode.disconnect(); } catch (error) { /* 节点可能已断开 */ }
+  try { if (appState.wasmProcessorNode) appState.wasmProcessorNode.disconnect(); } catch (error) { /* 节点可能已断开 */ }
+  try { if (appState.wasmRecognizer) appState.wasmRecognizer.remove(); } catch (error) { /* 识别器可能已释放 */ }
+  try { if (appState.wasmAudioContext) appState.wasmAudioContext.close(); } catch (error) { /* 上下文可能已关闭 */ }
+  appState.wasmSourceNode = null;
+  appState.wasmProcessorNode = null;
+  appState.wasmRecognizer = null;
+  appState.wasmAudioContext = null;
+  appState.asrMode = "";
+}
+
 async function waitForLocalRecognition(Recognition, options) {
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
@@ -904,7 +1006,6 @@ async function startListening() {
   appState.lastRecognitionError = "";
   clearVoiceToasts();
   setListeningState(false, "正在连接麦克风");
-  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const microphoneReady = await startMicrophoneMonitor();
   if (!appState.voiceEnabled) {
     if (microphoneReady) stopMicrophoneMonitor();
@@ -915,12 +1016,28 @@ async function startListening() {
     setListeningState(false, "语音待命");
     return;
   }
-  if (!appState.recognition && Recognition) {
-    const prepared = await withTimeout(prepareLocalRecognition(Recognition), 12000);
-    appState.localRecognition = prepared === true;
+  // 首选：站点内置的离线语音识别（识别完全在本地完成，不依赖任何外部服务）
+  try {
+    const model = await loadLocalModel();
     if (!appState.voiceEnabled) return;
-    if (prepared !== true) setVoiceDetail("本地语音组件不可用，正在连接在线语音识别");
+    await startWasmListening(model);
+    return;
+  } catch (error) {
+    if (!appState.voiceEnabled) return;
+    setVoiceDetail("本地语音引擎不可用，正在尝试浏览器语音识别");
   }
+  // 兜底：浏览器原生语音识别（各环节限时，避免卡死）
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) {
+    appState.voiceEnabled = false;
+    showToast("语音引擎加载失败，请检查网络后刷新页面重试。", "triangle-alert");
+    setVoiceDetail("语音引擎未能加载");
+    stopMicrophoneMonitor();
+    return;
+  }
+  const prepared = await withTimeout(prepareLocalRecognition(Recognition), 12000);
+  if (!appState.voiceEnabled) return;
+  appState.localRecognition = prepared === true;
   if (!appState.recognition) {
     appState.recognition = createRecognition();
   }
@@ -942,6 +1059,7 @@ function stopListening() {
   appState.voiceEnabled = false;
   appState.recognitionPausedForSpeech = false;
   window.clearTimeout(appState.recognitionRestartTimer);
+  stopWasmListening();
   if (appState.recognition) {
     try { appState.recognition.stop(); } catch (error) { /* Recognition may already be idle. */ }
   }
